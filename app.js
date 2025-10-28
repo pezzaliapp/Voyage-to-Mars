@@ -23,29 +23,20 @@ addEventListener('resize', resize, {passive:true}); resize();
 /* ===== Utilities ===== */
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const lerp = (a,b,t)=>a+(b-a)*t;
-const ease = t=>t<.5? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; // cubic in/out
+const ease = t=>t<.5? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
 const TAU = Math.PI*2;
-
 function hsl(h,s,l,a=1){ return `hsla(${h} ${s}% ${l}% / ${a})`; }
 
-/* ===== Simple 3D camera & projection ===== */
-const cam = { x:0, y:0.25, z:2.8, rx:0, ry:0, mode:'AUTO' }; // ry: yaw, rx: pitch
-function rotateY(v, a){
-  const {x,z}=v; const ca=Math.cos(a), sa=Math.sin(a);
-  return {...v, x:x*ca - z*sa, z:x*sa + z*ca};
-}
-function rotateX(v, a){
-  const {y,z}=v; const ca=Math.cos(a), sa=Math.sin(a);
-  return {...v, y:y*ca - z*sa, z:y*sa + z*ca};
-}
+/* ===== Camera & projection (look toward +Z) ===== */
+const cam = { x:0, y:0.25, z:-2.8, rx:0, ry:Math.PI, mode:'AUTO' };
+function rotateY(v, a){ const {x,z}=v; const ca=Math.cos(a), sa=Math.sin(a); return {...v, x:x*ca - z*sa, z:x*sa + z*ca}; }
+function rotateX(v, a){ const {y,z}=v; const ca=Math.cos(a), sa=Math.sin(a); return {...v, y:y*ca - z*sa, z:y*sa + z*ca}; }
 function worldToScreen(p){
-  // camera looks toward -Z ✅
   let v = {x:p.x - cam.x, y:p.y - cam.y, z:p.z - cam.z};
   v = rotateY(v, -cam.ry);
   v = rotateX(v, -cam.rx);
   const fov = 1.2;
-  const zf = -v.z;
-  const z = zf <= 0.01 ? 0.01 : zf;
+  const z = v.z <= 0.01 ? 0.01 : v.z;     // look +Z
   const sx = (v.x / (z * fov)) * (W/2) + W/2;
   const sy = (v.y / (z * fov)) * (W/2) + H/2;
   const s = 1 / (z * fov);
@@ -56,9 +47,8 @@ function worldToScreen(p){
 const stars = [];
 function initStars(){
   stars.length=0;
-  for(let i=0;i<800;i++){
-    const r = 30 + Math.random()*120; // radius of sphere shell
-    // random direction
+  for(let i=0;i<900;i++){
+    const r = 30 + Math.random()*120;
     const u = Math.random()*TAU, v = Math.acos(2*Math.random()-1);
     const x = r*Math.sin(v)*Math.cos(u);
     const y = r*Math.cos(v);
@@ -69,13 +59,13 @@ function initStars(){
 }
 initStars();
 
-/* ===== Mission waypoints ===== */
+/* ===== Waypoints with positive Z ===== */
 const WAYPOINTS = [
   { name:'Earth',   p:{x:0,    y:0, z:0},     r:0.18, color:[220,90,64], type:'planet' },
-  { name:'Moon',    p:{x:0.6,  y:0.02, z:-0.4}, r:0.05, color:[220,20,85], type:'moon' },
-  { name:'Jupiter', p:{x:5.5,  y:-0.2, z:-3.0}, r:0.35, color:[30,60,65],  type:'planet' },
-  { name:'Neptune', p:{x:9.0,  y:0.4, z:-5.0},  r:0.28, color:[210,70,60], type:'planet', rings:true },
-  { name:'Mars',    p:{x:12.0, y:0.05,z:-7.0},  r:0.16, color:[10,65,60],  type:'planet' },
+  { name:'Moon',    p:{x:0.6,  y:0.02, z:0.4}, r:0.05, color:[220,20,85], type:'moon' },
+  { name:'Jupiter', p:{x:5.5,  y:-0.2, z:3.0}, r:0.35, color:[30,60,65],  type:'planet' },
+  { name:'Neptune', p:{x:9.0,  y:0.4, z:5.0},  r:0.28, color:[210,70,60], type:'planet', rings:true },
+  { name:'Mars',    p:{x:12.0, y:0.05,z:7.0},  r:0.16, color:[10,65,60],  type:'planet' },
 ];
 
 const PHASES = [
@@ -138,7 +128,7 @@ function drawPlanet(p, radius, hue, sat, light, rings=false, ringTilt=0.6){
   return {x:S.x, y:S.y, r:R};
 }
 
-/* ===== Labels (DOM) ===== */
+/* ===== Labels ===== */
 const labelsHost = document.getElementById('labels');
 const domLabels = new Map();
 function setLabel(name, x,y){
@@ -148,12 +138,10 @@ function setLabel(name, x,y){
   el.style.top  = Math.round(y/DPR - 18) + 'px';
 }
 function hideUnusedLabels(setUsed){
-  for(const [name, el] of domLabels){
-    el.style.display = setUsed.has(name)? '' : 'none';
-  }
+  for(const [name, el] of domLabels){ el.style.display = setUsed.has(name)? '' : 'none'; }
 }
 
-/* ===== UI elements ===== */
+/* ===== UI ===== */
 const elPhase = document.getElementById('phase');
 const elDist  = document.getElementById('dist');
 const elVel   = document.getElementById('vel');
@@ -169,18 +157,14 @@ const btnRe   = document.getElementById('btnRestart');
 
 /* ===== Interaction ===== */
 let running = true;
-let speed = 0.08; // base time speed per second
-let t = 0; // 0..1 along path
+let speed = 0.08;
+let t = 0;
 let yawDrag=0, pitchDrag=0, dragging=false, dragX=0, dragY=0;
 
 function toggleRun(){ running = !running; elBadge.style.display = running?'none':''; elBadge.textContent='PAUSA'; }
 function restart(){ t=0; running=true; elBadge.style.display='none'; }
-function changeMode(){
-  cam.mode = cam.mode==='AUTO' ? 'FREE' : 'AUTO';
-  elMode.textContent = cam.mode==='AUTO' ? 'Camera AUTO' : 'Camera LIBERA';
-}
+function changeMode(){ cam.mode = cam.mode==='AUTO' ? 'FREE' : 'AUTO'; elMode.textContent = cam.mode==='AUTO' ? 'Camera AUTO' : 'Camera LIBERA'; }
 
-/* Keyboard */
 addEventListener('keydown', (e)=>{
   if(e.key===' '){ e.preventDefault(); toggleRun(); }
   if(e.key==='r' || e.key==='R') restart();
@@ -188,15 +172,8 @@ addEventListener('keydown', (e)=>{
   if(e.key==='+' || e.key==='=' ) speed = Math.min(0.6, speed*1.25);
   if(e.key==='-' || e.key==='_' ) speed = Math.max(0.01, speed/1.25);
 });
-/* Mouse/touch drag */
 function onDown(x,y){ if(cam.mode==='FREE'){ dragging=true; dragX=x; dragY=y; } }
-function onMove(x,y){
-  if(dragging){
-    yawDrag += (x-dragX)*0.004;
-    pitchDrag += (y-dragY)*0.004;
-    dragX=x; dragY=y;
-  }
-}
+function onMove(x,y){ if(dragging){ yawDrag += (x-dragX)*0.004; pitchDrag += (y-dragY)*0.004; dragX=x; dragY=y; } }
 function onUp(){ dragging=false; }
 canvas.addEventListener('mousedown', e=>onDown(e.clientX,e.clientY));
 addEventListener('mousemove', e=>onMove(e.clientX,e.clientY));
@@ -205,57 +182,49 @@ canvas.addEventListener('touchstart', e=>{const t=e.changedTouches[0]; onDown(t.
 canvas.addEventListener('touchmove', e=>{const t=e.changedTouches[0]; onMove(t.clientX,t.clientY);},{passive:true});
 canvas.addEventListener('touchend', onUp, {passive:true});
 
-/* Buttons */
 btnPlay.onclick = toggleRun;
 btnDown.onclick = ()=>speed = Math.max(0.01, speed/1.25);
 btnUp.onclick   = ()=>speed = Math.min(0.6, speed*1.25);
 btnMode.onclick = changeMode;
 btnRe.onclick   = restart;
-/* HUD toggle */
+
 addEventListener('dblclick', ()=>{
   const hud = document.getElementById('hud');
   hud.style.display = hud.style.display==='none' ? '' : 'none';
 });
 
-/* ===== Phase text ===== */
-function phaseFor(t){
-  for(const p of PHASES){ if(t>=p.t0 && t<p.t1) return p.label; }
-  return PHASES[PHASES.length-1].label;
-}
+function phaseFor(t){ for(const p of PHASES){ if(t>=p.t0 && t<p.t1) return p.label; } return PHASES[PHASES.length-1].label; }
 
-/* ===== Main loop ===== */
+/* ===== Loop ===== */
 let last = performance.now();
 function tick(now){
   const dt = Math.min(0.05, (now-last)/1000); last=now;
-
   if(running){
     t += speed*dt*(0.45 + 0.55*Math.sin(now*0.0007+1.2));
     if(t>=1){ t=1; running=false; elBadge.style.display=''; elBadge.textContent='ARRIVO: MARTE'; }
   }
-
   const here = samplePath(t);
   const ahead = samplePath(clamp(t+0.02,0,1));
-  const remaining = Math.max(0, (1-t)*225e6); // km (fittizio)
-  const v_kms = clamp(speed*12000, 36, 48000); // km/s (fittizio)
+  const remaining = Math.max(0, (1-t)*225e6);
+  const v_kms = clamp(speed*12000, 36, 48000);
 
   if(cam.mode==='AUTO'){
     cam.x = lerp(cam.x, here.x+0.0, 0.06);
     cam.y = lerp(cam.y, here.y+0.25, 0.06);
-    cam.z = lerp(cam.z, here.z+0.75, 0.06);
+    cam.z = lerp(cam.z, here.z-0.75, 0.06); // follow from behind (look +Z)
     const dx=ahead.x-here.x, dy=ahead.y-here.y, dz=ahead.z-here.z;
     const targetYaw = Math.atan2(dx,dz);
     const targetPitch = Math.atan2(dy, Math.hypot(dx,dz));
-    cam.ry = lerp(cam.ry, targetYaw, 0.06);
+    cam.ry = lerp(cam.ry, targetYaw+Math.PI, 0.06); // align look +Z
     cam.rx = lerp(cam.rx, targetPitch, 0.06);
   } else {
     cam.ry += yawDrag; yawDrag *= 0.9;
     cam.rx = clamp(cam.rx + pitchDrag, -1.0, 1.0); pitchDrag *= 0.9;
     cam.x = lerp(cam.x, here.x+0.0, 0.02);
     cam.y = lerp(cam.y, here.y+0.25, 0.02);
-    cam.z = lerp(cam.z, here.z+0.95, 0.02);
+    cam.z = lerp(cam.z, here.z-0.95, 0.02);
   }
 
-  // HUD
   document.getElementById('phase').textContent = phaseFor(t);
   document.getElementById('dist').textContent  = remaining.toLocaleString('it-IT')+' km';
   document.getElementById('vel').textContent   = Math.round(v_kms).toLocaleString('it-IT')+' km/s';
@@ -270,19 +239,18 @@ requestAnimationFrame(tick);
 function renderScene(here){
   ctx.clearRect(0,0,W,H);
 
-  // stars: place at negative Z (in front of camera looking -Z)
+  // stars: positive Z
   ctx.save();
   for(const s of stars){
-    const p = worldToScreen({x:s.x*0.02, y:s.y*0.02, z:-50 - s.z*0.02});
+    const p = worldToScreen({x:s.x*0.02, y:s.y*0.02, z:50 + s.z*0.02});
     if(p.x<0||p.x>W||p.y<0||p.y>H) continue;
-    const a = 0.35 + s.mag*0.65;
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = 0.35 + s.mag*0.65;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(p.x, p.y, 1.2, 1.2);
   }
   ctx.restore();
 
-  // trajectory
+  // trajectory ahead
   ctx.beginPath();
   for(let i=0;i<=120;i++){
     const tt = clamp(t + i/120*0.22, 0, 1);

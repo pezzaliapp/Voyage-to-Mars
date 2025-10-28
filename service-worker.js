@@ -1,7 +1,7 @@
-const CACHE='voyage-to-mars-final-v1';
+const CACHE='voyage-to-mars-fixed-v1';
 const ASSETS=[
   './',
-  './index.html',
+  './index.html?v=fixed1',
   './styles.css',
   './app.js',
   './manifest.json',
@@ -13,9 +13,7 @@ self.addEventListener('install',e=>{
   self.skipWaiting();
 });
 self.addEventListener('activate',e=>{
-  e.waitUntil(
-    caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-  );
+  e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
   self.clients.claim();
 });
 self.addEventListener('fetch',e=>{
