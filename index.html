@@ -2,38 +2,34 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-  <title>Voyage to Mars — NASA-Style Flight (PWA, Fixed)</title>
-  <meta name="theme-color" content="#0b1231">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Voyage to Mars — NASA‑Style Textures (WebGL • PWA)</title>
+  <meta name="theme-color" content="#0b1022">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="wrap">
-    <canvas id="view"></canvas>
-    <div id="hud">
-      <h1>Voyage to Mars <span style="opacity:.6">— Missione dimostrativa</span></h1>
-      <div id="stats">
-        <b>Fase</b><span id="phase">Pre-launch</span>
-        <b>Distanza a Marte</b><span id="dist">—</span>
-        <b>Velocità</b><span id="vel">—</span>
-        <b>Modalità</b><span id="mode">Camera AUTO</span>
-      </div>
-      <div id="bar"><span id="prog"></span></div>
+  <canvas id="gl"></canvas>
+  <div id="hud" class="card">
+    <h1>Voyage to Mars <span>— NASA Textures</span></h1>
+    <div class="grid">
+      <b>Fase</b><span id="phase">Orbita Terrestre</span>
+      <b>Distanza a Marte</b><span id="dist">—</span>
+      <b>Velocità</b><span id="vel">—</span>
+      <b>Modalità</b><span id="mode">AUTO</span>
     </div>
-    <div id="controls">
-      <button class="btn primary" id="btnPlay">⏯ Play/Pausa</button>
-      <button class="btn" id="btnSpeedDown">– Speed</button>
-      <button class="btn" id="btnSpeedUp">+ Speed</button>
-      <button class="btn" id="btnMode">Camera</button>
-      <button class="btn" id="btnRestart">Restart</button>
-    </div>
-    <div id="install"><button class="btn" id="btnInstall">Installa PWA</button></div>
-    <div id="tip">Doppio clic: HUD ON/OFF — Trascina per ruotare in <b>Camera LIBERA</b> — Tasti: <b>Space</b>, <b>+</b>, <b>–</b>, <b>R</b>, <b>C</b></div>
-    <div id="badge" class="badge" style="display:none">PAUSA</div>
-    <div id="labels"></div>
+    <div id="bar"><span id="prog"></span></div>
   </div>
+  <div id="controls" class="card row">
+    <button id="btnPlay" class="btn">⏯</button>
+    <button id="btnSlow" class="btn">– Speed</button>
+    <button id="btnFast" class="btn">+ Speed</button>
+    <button id="btnMode" class="btn">Camera</button>
+    <button id="btnRestart" class="btn">Restart</button>
+    <button id="btnJump" class="btn">Salti</button>
+  </div>
+  <div id="tip">Tasti: Space, +, –, C, R — Drag in Camera LIBERA</div>
   <script src="app.js"></script>
 </body>
 </html>
