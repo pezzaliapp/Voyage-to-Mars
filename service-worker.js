@@ -1,7 +1,9 @@
-const CACHE='voyage-to-mars-v1';
+const CACHE='voyage-to-mars-final-v1';
 const ASSETS=[
   './',
   './index.html',
+  './styles.css',
+  './app.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
