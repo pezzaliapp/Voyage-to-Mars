@@ -47,18 +47,13 @@ html,body{
   font-size:16px;
   font-weight:700;
 }
-
-#hud h1 span{
-  opacity:.6;
-  font-weight:600;
-}
+#hud h1 span{ opacity:.6; font-weight:600; }
 
 .grid{
   display:grid;
   grid-template-columns:auto 1fr;
   gap:4px 10px;
 }
-
 #bar{
   height:6px;
   background:rgba(255,255,255,.08);
@@ -75,13 +70,14 @@ html,body{
 
 /* ---- Pulsanti in basso a destra ---- */
 .row{
-  position:fixed;           /* <— necessario per usare right/bottom */
+  position:fixed;
   right:12px;
   bottom:12px;
   display:flex;
+  flex-wrap:wrap;
   gap:8px;
   padding:8px;
-  z-index:20;               /* sopra a tutto il resto */
+  z-index:20; /* sopra alla HUD e al tip */
 }
 
 .btn{
@@ -99,10 +95,7 @@ html,body{
 }
 .btn:hover{ transform:translateY(-1px); }
 .btn:active{ transform:translateY(0); }
-.btn:focus-visible{
-  outline:2px solid #8fb2ff;
-  outline-offset:2px;
-}
+.btn:focus-visible{ outline:2px solid #8fb2ff; outline-offset:2px; }
 
 /* ---- Barra suggerimenti in basso (non blocca i click) ---- */
 #tip{
@@ -112,6 +105,6 @@ html,body{
   transform:translateX(-50%);
   opacity:.8;
   color:#cbd5ff;
-  pointer-events:none;      /* <— non intercetta i click sui pulsanti */
+  pointer-events:none; /* non interferisce coi click sui pulsanti */
   z-index:10;
 }
