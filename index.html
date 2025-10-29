@@ -4,14 +4,15 @@
   <meta charset="UTF-8"/>
   <meta http-equiv="Cache-Control" content="no-store, max-age=0"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Viaggio su Marte — CesiumJS (failsafe)</title>
+  <title>Viaggio su Marte — CesiumJS (failsafe v2)</title>
+  <!-- Cesium stabile -->
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js?v=110"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css?v=110" rel="stylesheet">
   <style>
     html,body,#cesium{width:100%;height:100%;margin:0;background:#05070f;overflow:hidden}
     #hud{position:fixed;left:14px;bottom:14px;z-index:10;background:rgba(10,15,32,.78);
       border:1px solid rgba(110,160,255,.35);backdrop-filter:blur(6px);color:#eaf1ff;
-      border-radius:12px;padding:10px 12px;min-width:240px;font:14px/1.25 system-ui,Segoe UI,Roboto,Arial}
+      border-radius:12px;padding:10px 12px;min-width:260px;font:14px/1.25 system-ui,Segoe UI,Roboto,Arial}
     #hud h3{margin:0 0 6px;font-size:15px}
     .row{display:flex;gap:8px;flex-wrap:wrap}
     button,select{background:#0e1633;color:#eaf1ff;border:1px solid rgba(110,160,255,.35);
@@ -43,30 +44,25 @@ const viewer = new Cesium.Viewer("cesium",{
   sceneModePicker:false,navigationHelpButton:false,infoBox:false,selectionIndicator:false,
   fullscreenButton:false,scene3DOnly:true
 });
-
 const scene = viewer.scene;
-
-// ✅ Modalità “spazio” sicura (NON sovrascrivere oggetti!):
+// Spazio: niente globo/atmosfera (attenzione: .show = false, non assegnare oggetti!)
 scene.globe.show = false;
-if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;   // ← fix
-if (scene.skyBox)         scene.skyBox.show = false;
+if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
+if (scene.skyBox) scene.skyBox.show = false;
 scene.backgroundColor = Cesium.Color.fromBytes(3,6,16,255);
-
-// niente luci/effetti
-scene.sun  = undefined;
-scene.moon = undefined;
-scene.light = undefined;
+// No lighting/post-process
+scene.sun = undefined; scene.moon = undefined; scene.light = undefined;
 try{ scene.postProcessStages.bloom.enabled = false; }catch{}
-
-// frame locale (non geodetico)
+// Frame locale
 viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
 
-// --------------------- scala compatta (metri scena) ---------------------
+// --------------------- scala compatta (metri “scena”) ---------------------
 const R_E_ORBIT = 300000;  // 300 km
 const R_M_ORBIT = 500000;  // 500 km
-const S_SUN=120000, S_EARTH=24000, S_MARS=18000;
+// Sprite in PIXEL (non metri!)
+const S_SUN=220, S_EARTH=72, S_MARS=60;
 
-// helper SVG “fake shading”
+// SVG helper (fake shading)
 function planetSVG(hex, spec="#ffffff", vign="0.35"){
   return 'data:image/svg+xml;utf8,'+encodeURIComponent(
 `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
@@ -95,31 +91,37 @@ const sunGlow = 'data:image/svg+xml;utf8,'+encodeURIComponent(
   <circle cx="128" cy="128" r="120" fill="url(#g)"/>
 </svg>`);
 
-// billboard + label
-function addSprite(name, size, position, image, labelColor){
+// Billboard + label (+ scaleByDistance per visibilità)
+const near = R_E_ORBIT*0.5, far = R_M_ORBIT*3;
+function addSprite(name, pxSize, position, image, labelColor){
   return viewer.entities.add({
     position,
-    billboard:{ image, width:size, height:size,
+    billboard:{
+      image, width:pxSize, height:pxSize,
       verticalOrigin: Cesium.VerticalOrigin.CENTER,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY },
-    label:{ text:name, font:"600 14px Segoe UI",
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      scaleByDistance: new Cesium.NearFarScalar(near, 1.4, far, 0.6)  // auto-scala con distanza
+    },
+    label:{
+      text:name, font:"600 14px Segoe UI",
       fillColor: labelColor || Cesium.Color.fromBytes(224,236,255),
       outlineColor: Cesium.Color.fromBytes(10,16,32), outlineWidth:3,
       verticalOrigin: Cesium.VerticalOrigin.TOP, pixelOffset:new Cesium.Cartesian2(0,10),
-      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0.0, R_M_ORBIT*4) }
+      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0.0, far)
+    }
   });
 }
 function addOrbit(radius, color){
   const pts=[], N=512;
   for(let i=0;i<=N;i++){ const t=i/N*Cesium.Math.TWO_PI;
     pts.push(new Cesium.Cartesian3(radius*Math.cos(t),0,radius*Math.sin(t))); }
-  viewer.entities.add({ polyline:{ positions:pts, width:1.5,
-    material: color.withAlpha(0.6), arcType: Cesium.ArcType.NONE }});
+  viewer.entities.add({ polyline:{ positions:pts, width:2.5,
+    material: color.withAlpha(0.85), arcType: Cesium.ArcType.NONE }});
 }
 
 // Sole + alone
 const ORIGIN = new Cesium.Cartesian3(0,0,0);
-viewer.entities.add({ position: ORIGIN, billboard:{ image:sunGlow, scale:2.2,
+viewer.entities.add({ position: ORIGIN, billboard:{ image:sunGlow, scale:2.0,
   disableDepthTestDistance:Number.POSITIVE_INFINITY }});
 addSprite("Sole", S_SUN, ORIGIN, planetSVG("#ffd066","#fff5d0","0.15"));
 
@@ -131,7 +133,7 @@ const marsPos  = new Cesium.Cartesian3(R_M_ORBIT,0,0);
 addSprite("Terra", S_EARTH, earthPos, planetSVG("#77a8ff","#eaf1ff"));
 addSprite("Marte", S_MARS,  marsPos,  planetSVG("#ff7a6a","#ffd0c7"));
 
-// Traiettoria Hohmann
+// Traiettoria Hohmann (polilinea luminosa)
 function hohmann(R1, R2, samples=900){
   const a=(R1+R2)/2, e=(R2-R1)/(R2+R1), c=a*e; const pts=[];
   for(let i=0;i<=samples;i++){
@@ -141,8 +143,9 @@ function hohmann(R1, R2, samples=900){
   return pts;
 }
 const transfer = hohmann(R_E_ORBIT, R_M_ORBIT, 900);
-viewer.entities.add({ polyline:{ positions:transfer, width:2,
-  material: Cesium.Color.fromBytes(120,220,255,220), arcType: Cesium.ArcType.NONE }});
+viewer.entities.add({ polyline:{ positions:transfer, width:2.5,
+  material: new Cesium.PolylineGlowMaterialProperty({ color: Cesium.Color.fromBytes(140,230,255,230), glowPower:0.12 }),
+  arcType: Cesium.ArcType.NONE }});
 
 // Nave + path
 const start = Cesium.JulianDate.now(), travelSeconds = 35, clock = viewer.clock;
@@ -164,15 +167,18 @@ viewer.entities.add({
       <polygon points="40,6 30,34 50,34" fill="#eaf1ff"/>
       <rect x="36.5" y="34" width="7" height="26" rx="2" fill="#bcd6ff"/>
       <polygon points="40,60 28,72 52,72" fill="#88c9ff"/></svg>`),
-    scale:0.9, disableDepthTestDistance:Number.POSITIVE_INFINITY },
+    scale:1.0, disableDepthTestDistance:Number.POSITIVE_INFINITY,
+    scaleByDistance: new Cesium.NearFarScalar(near, 1.4, far, 0.7)
+  },
   path:{ show:true, resolution:1, leadTime:0, trailTime:travelSeconds,
-    material: Cesium.Color.fromBytes(120,220,255,160), width:2 }
+    material: new Cesium.PolylineGlowMaterialProperty({ color: Cesium.Color.fromBytes(140,230,255,200), glowPower:0.1 }),
+    width:2 }
 });
 
-// Camera + tracking
+// Camera: vista iniziale che inquadra tutto
 viewer.camera.setView({
-  destination: new Cesium.Cartesian3(R_M_ORBIT*1.2, R_M_ORBIT*0.6, R_M_ORBIT*0.8),
-  orientation: {heading:0, pitch:Cesium.Math.toRadians(-20), roll:0}
+  destination: new Cesium.Cartesian3(R_M_ORBIT*1.35, R_M_ORBIT*0.7, R_M_ORBIT*0.9),
+  orientation: {heading:0, pitch:Cesium.Math.toRadians(-18), roll:0}
 });
 function trackShip(){
   const remove = scene.postRender.addEventListener(()=>{
@@ -204,14 +210,17 @@ $("start").onclick = ()=>{
   }, (travelSeconds+0.5)*1000);
   setStatus("Traiettoria in esecuzione…");
 };
+
 $("clip").onclick = ()=>{
   setStatus("Clip…");
+  // Panoramica iniziale visibile + avvio
   viewer.camera.flyTo({
-    destination:new Cesium.Cartesian3(R_E_ORBIT*1.2, 120000, R_E_ORBIT*0.4),
-    orientation:{heading:Cesium.Math.toRadians(-10), pitch:Cesium.Math.toRadians(-12), roll:0}, duration:2.2
+    destination:new Cesium.Cartesian3(R_E_ORBIT*1.25, 150000, R_E_ORBIT*0.5),
+    orientation:{heading:Cesium.Math.toRadians(-10), pitch:Cesium.Math.toRadians(-12), roll:0}, duration:2.0
   });
-  setTimeout(()=>$("start").click(),2300);
+  setTimeout(()=>$("start").click(), 2100);
 };
+
 $("q").onchange = e=>{
   const v=e.target.value;
   if(v==="low"){ scene.msaaSamples=1; scene.fxaa=true; setStatus("Qualità bassa"); }
