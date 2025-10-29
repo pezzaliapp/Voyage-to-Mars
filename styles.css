@@ -1,15 +1,117 @@
-:root{--ink:#eaf1ff;--muted:#91a2d8}
-html,body{margin:0;height:100%;background:#040a1c;color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial}
-#gl{position:fixed;inset:0;display:block;width:100vw;height:100vh;background:#040a1c}
-.card{position:fixed;background:rgba(10,14,40,.6);backdrop-filter:blur(6px);
-  border:1px solid rgba(110,140,220,.25);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
-#hud{left:12px;top:12px;min-width:280px;padding:10px 12px}
-#hud h1{margin:0 0 6px;font-size:16px;font-weight:700}
-#hud h1 span{opacity:.6;font-weight:600}
-.grid{display:grid;grid-template-columns:auto 1fr;gap:4px 10px}
-#bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:8px;overflow:hidden}
-#bar span{display:block;height:100%;background:linear-gradient(90deg,#59f,#b8f);width:0%}
-.row{right:12px;bottom:12px;display:flex;gap:8px;padding:8px}
-.btn{background:rgba(18,24,60,.6);color:var(--ink);border:1px solid rgba(140,160,220,.35);
-  padding:8px 10px;border-radius:10px;font-weight:700;cursor:pointer}
-#tip{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);opacity:.8;color:#cbd5ff}
+:root{
+  --ink:#eaf1ff;
+  --muted:#91a2d8;
+  --panel: rgba(10,14,40,.60);
+  --border: rgba(110,140,220,.25);
+  --btn: rgba(18,24,60,.60);
+  --btn-border: rgba(140,160,220,.35);
+}
+
+html,body{
+  margin:0;
+  height:100%;
+  background:#040a1c;
+  color:var(--ink);
+  font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial;
+}
+
+#gl{
+  position:fixed;
+  inset:0;
+  display:block;
+  width:100vw;
+  height:100vh;
+  background:#040a1c;
+}
+
+/* ---- HUD (card in alto a sinistra) ---- */
+.card{
+  position:fixed;
+  background:var(--panel);
+  backdrop-filter:blur(6px);
+  border:1px solid var(--border);
+  border-radius:14px;
+  box-shadow:0 12px 40px rgba(0,0,0,.35);
+  z-index:15;
+}
+
+#hud{
+  left:12px;
+  top:12px;
+  min-width:280px;
+  padding:10px 12px;
+}
+
+#hud h1{
+  margin:0 0 6px;
+  font-size:16px;
+  font-weight:700;
+}
+
+#hud h1 span{
+  opacity:.6;
+  font-weight:600;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:4px 10px;
+}
+
+#bar{
+  height:6px;
+  background:rgba(255,255,255,.08);
+  border-radius:99px;
+  margin-top:8px;
+  overflow:hidden;
+}
+#bar span{
+  display:block;
+  height:100%;
+  background:linear-gradient(90deg,#59f,#b8f);
+  width:0%;
+}
+
+/* ---- Pulsanti in basso a destra ---- */
+.row{
+  position:fixed;           /* <— necessario per usare right/bottom */
+  right:12px;
+  bottom:12px;
+  display:flex;
+  gap:8px;
+  padding:8px;
+  z-index:20;               /* sopra a tutto il resto */
+}
+
+.btn{
+  background:var(--btn);
+  color:var(--ink);
+  border:1px solid var(--btn-border);
+  padding:8px 10px;
+  border-radius:10px;
+  font-weight:700;
+  cursor:pointer;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-tap-highlight-color: transparent;
+  transition:transform .06s ease, background .15s ease, border-color .15s ease;
+}
+.btn:hover{ transform:translateY(-1px); }
+.btn:active{ transform:translateY(0); }
+.btn:focus-visible{
+  outline:2px solid #8fb2ff;
+  outline-offset:2px;
+}
+
+/* ---- Barra suggerimenti in basso (non blocca i click) ---- */
+#tip{
+  position:fixed;
+  left:50%;
+  bottom:10px;
+  transform:translateX(-50%);
+  opacity:.8;
+  color:#cbd5ff;
+  pointer-events:none;      /* <— non intercetta i click sui pulsanti */
+  z-index:10;
+}
