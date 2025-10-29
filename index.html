@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>Voyage to Mars — CesiumJS (Open Source)</title>
+<title>Voyage to Mars — CesiumJS (Focus Planets)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/cesium/Build/Cesium/Widgets/widgets.css">
 <script src="https://unpkg.com/cesium/Build/Cesium/Cesium.js"></script>
@@ -21,7 +21,7 @@
   #controls{ right:12px; bottom:12px; display:flex; gap:8px; padding:8px; z-index:10; flex-wrap:wrap }
   .btn{ background:rgba(18,26,66,.7); color:var(--ink); border:1px solid var(--line); padding:8px 10px; border-radius:10px; font-weight:700; cursor:pointer }
   .badge{ position:absolute; right:12px; top:12px; background:#e11d48; color:#fff; padding:6px 10px; border-radius:999px; box-shadow:0 10px 30px rgba(225,29,72,.3); display:none; z-index:10 }
-  #tip{ position:absolute; left:50%; bottom:10px; transform:translateX(-50%); color:#cbd5ff; opacity:.85; font-size:12px; z-index:10 }
+  #tip{ position:absolute; left:50%; bottom:10px; transform:translateX(-50%); color:#cbd5ff; opacity:.85; font-size:12px; z-index:10; text-align:center }
   .group{ display:flex; gap:8px }
 </style>
 </head>
@@ -53,11 +53,16 @@
     <button class="btn" data-jump="Giove">Giove</button>
     <button class="btn" data-jump="Nettuno">Nettuno</button>
     <button class="btn" data-jump="Marte">Marte</button>
+    <button class="btn" id="btnNear">Vicino</button>
+    <button class="btn" id="btnFar">Lontano</button>
   </div>
 </div>
 
 <div id="badge" class="badge">PAUSA</div>
-<div id="tip">Mouse/Touch per muovere • Scroll: zoom • Tasti: Space, +, –, C, R • “Camera” cicla: AUTO → CHASE → ORBIT → FREE</div>
+<div id="tip">
+  Clic su un pianeta = focus & avvicinati • Scroll = zoom <br>
+  Tasti: Space (play), +/– (speed), C (camera), R (restart), [ ] (vicino/lontano)
+</div>
 
 <script>
 (() => {
@@ -65,14 +70,8 @@
 
   // ===== Viewer base (no globe/ion) =====
   const viewer = new Cesium.Viewer('cesiumContainer', {
-    imageryProvider: false,
-    baseLayerPicker: false,
-    timeline: false,
-    animation: false,
-    geocoder: false,
-    sceneModePicker: false,
-    navigationHelpButton: false,
-    homeButton: false,
+    imageryProvider: false, baseLayerPicker: false, timeline: false, animation: false,
+    geocoder: false, sceneModePicker: false, navigationHelpButton: false, homeButton: false,
     terrainProvider: new Cesium.EllipsoidTerrainProvider()
   });
   const scene = viewer.scene;
@@ -82,35 +81,37 @@
   scene.light = new Cesium.DirectionalLight({ direction: new Cesium.Cartesian3(-0.6,0.35,0.7) });
 
   // ===== Scala e util =====
-  const U = 1e7; // 10.000 km per unità (demo)
+  const U = 1e7; // 10.000 km per unità
+  const PLANET_SCALE = 4; // ⬅️ scala visiva per rendere i pianeti più grandi
   const V3 = Cesium.Cartesian3;
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const lerp=(a,b,s)=>a+(b-a)*s;
 
   // ===== Pianeti =====
   function planet(pos, radiusKm, color, name){
-    return viewer.entities.add({
+    const e = viewer.entities.add({
       name,
       position: new V3(pos.x*U, pos.y*U, pos.z*U),
       ellipsoid: {
-        radii: new V3(radiusKm*1000/U, radiusKm*1000/U, radiusKm*1000/U),
+        radii: new V3(radiusKm*1000/U*PLANET_SCALE, radiusKm*1000/U*PLANET_SCALE, radiusKm*1000/U*PLANET_SCALE),
         material: color.withAlpha(0.96),
-        outline: true, outlineColor: Cesium.Color.fromCssColorString('rgba(255,255,255,.15)')
+        outline: true, outlineColor: Cesium.Color.fromCssColorString('rgba(255,255,255,.18)')
       },
       label: {
-        text: name, font: '14px Roboto', fillColor: Cesium.Color.WHITE.withAlpha(0.9),
-        showBackground: true, backgroundColor: Cesium.Color.fromBytes(20,26,60,200),
+        text: name, font: '14px Roboto', fillColor: Cesium.Color.WHITE.withAlpha(0.95),
+        showBackground: true, backgroundColor: Cesium.Color.fromBytes(20,26,60,210),
         pixelOffset: new Cesium.Cartesian2(0, -30), disableDepthTestDistance: Number.POSITIVE_INFINITY
       }
     });
+    return e;
   }
   function neptuneRings(pos, innerKm, outerKm){
     const p = new V3(pos.x*U, pos.y*U, pos.z*U);
     viewer.entities.add({
       position: p,
       ellipse: {
-        semiMajorAxis: (outerKm*1000)/U,
-        semiMinorAxis: (outerKm*1000)/U*0.55,
+        semiMajorAxis: (outerKm*1000)/U*PLANET_SCALE*2,
+        semiMinorAxis: (outerKm*1000)/U*PLANET_SCALE*2*0.55,
         material: new Cesium.Color(0.9,0.95,1,0.28),
         height: 0, stRotation: 0.7
       }
@@ -118,8 +119,8 @@
     viewer.entities.add({
       position: p,
       ellipse: {
-        semiMajorAxis: (innerKm*1000)/U,
-        semiMinorAxis: (innerKm*1000)/U*0.55,
+        semiMajorAxis: (innerKm*1000)/U*PLANET_SCALE*2,
+        semiMinorAxis: (innerKm*1000)/U*PLANET_SCALE*2*0.55,
         material: scene.backgroundColor,
         height: 0, stRotation: 0.7
       }
@@ -134,7 +135,12 @@
     { name:'Marte',   p:{x: 6.30, y: 0.05, z:-7.5}, r: 3389/4, color: Cesium.Color.fromCssColorString('hsl(14 60% 55%)') },
   ];
   const nameToWP = Object.fromEntries(WP.map(w=>[w.name,w]));
-  for(const w of WP){ planet(w.p, w.r, w.color, w.name); if(w.rings) neptuneRings(w.p, 1.2*w.r, 2.1*w.r); }
+  const planetEntityByName = {};
+
+  for(const w of WP){
+    planetEntityByName[w.name] = planet(w.p, w.r, w.color, w.name);
+    if(w.rings) neptuneRings(w.p, 1.2*w.r, 2.1*w.r);
+  }
 
   // ===== Rotta + nave =====
   function sample(t){
@@ -154,7 +160,7 @@
   const ship = viewer.entities.add({
     name:'Spacecraft',
     position: Cesium.Cartesian3.ZERO,
-    ellipsoid:{ radii:new V3(110e3/U,110e3/U,110e3/U), material: Cesium.Color.CYAN },
+    ellipsoid:{ radii:new V3(120e3/U,120e3/U,120e3/U), material: Cesium.Color.CYAN },
     orientation: Cesium.Quaternion.IDENTITY
   });
 
@@ -162,17 +168,17 @@
   const $=(id)=>document.getElementById(id);
   const elPhase=$('phase'), elDist=$('dist'), elVel=$('vel'), elMode=$('mode'), elProg=$('prog'), elBadge=$('badge');
   let running=true, speed=0.08, t=0;
-  let camModeIdx=0; // 0 AUTO, 1 CHASE, 2 ORBIT, 3 FREE
-  const CAM_MODES=['AUTO','CHASE','ORBIT','FREE'];
-
-  const setMode=(i)=>{ camModeIdx=i%CAM_MODES.length; elMode.textContent=CAM_MODES[camModeIdx]; };
+  let camModeIdx=0; const CAM_MODES=['AUTO','CHASE','ORBIT','FREE']; const setMode=(i)=>{camModeIdx=i%CAM_MODES.length; elMode.textContent=CAM_MODES[camModeIdx];};
+  let focusName=null, focusZoom=10; // più basso = più vicino
 
   $('btnPlay').onclick=()=>{running=!running; elBadge.style.display=running?'none':'';}
   $('btnSlow').onclick=()=>speed=Math.max(0.02, speed/1.25);
   $('btnFast').onclick=()=>speed=Math.min(0.9, speed*1.25);
   $('btnMode').onclick=()=>setMode(camModeIdx+1);
   $('btnRestart').onclick=()=>{t=0; running=true; elBadge.style.display='none'; setMode(0);}
-  document.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>focusPlanet(b.dataset.jump));
+  document.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>focusPlanet(b.dataset.jump,true));
+  $('btnNear').onclick=()=>{focusZoom=Math.max(3, focusZoom-1); if(focusName) focusPlanet(focusName,false);}
+  $('btnFar').onclick=()=>{focusZoom=Math.min(30, focusZoom+1); if(focusName) focusPlanet(focusName,false);}
 
   addEventListener('keydown',e=>{
     if(e.key===' '){e.preventDefault();$('btnPlay').click();}
@@ -180,31 +186,35 @@
     if(e.key==='-'||e.key==='_') $('btnSlow').click();
     if(e.key==='c'||e.key==='C') $('btnMode').click();
     if(e.key==='r'||e.key==='R') $('btnRestart').click();
-    if(e.key==='1') focusPlanet('Terra');
-    if(e.key==='2') focusPlanet('Luna');
-    if(e.key==='3') focusPlanet('Giove');
-    if(e.key==='4') focusPlanet('Nettuno');
-    if(e.key==='5') focusPlanet('Marte');
+    if(e.key==='['){ $('btnNear').click(); }
+    if(e.key===']'){ $('btnFar').click(); }
   });
 
-  function focusPlanet(name){
+  // click su pianeta = focus
+  const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
+  handler.setInputAction((movement)=>{
+    const pick = scene.pick(movement.position);
+    if(pick && pick.id && pick.id.name && planetEntityByName[pick.id.name]){
+      focusPlanet(pick.id.name,true);
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  function focusPlanet(name, animate){
     const w = nameToWP[name]; if(!w) return;
+    focusName=name; setMode(2); // ORBIT
     const pos = new V3(w.p.x*U, w.p.y*U, w.p.z*U);
     const cam = viewer.camera;
-    const dist = (w.r*1000)/U * 12; // distanza di framing
-    cam.flyTo({
-      destination: new V3(pos.x + dist, pos.y + dist*0.3, pos.z + dist),
-      orientation: { direction: V3.normalize(V3.subtract(pos, cam.position, new V3()), new V3()) },
-      duration: 0.6
-    });
-    setMode(2); // ORBIT
+    const dist = (w.r*1000)/U * focusZoom; // dipende da focusZoom
+    const dest = new V3(pos.x + dist, pos.y + dist*0.3, pos.z + dist);
+    if(animate){
+      cam.flyTo({ destination: dest, orientation:{ direction: V3.normalize(V3.subtract(pos, dest, new V3()), new V3()) }, duration: 0.6 });
+    } else {
+      cam.setView({ destination: dest, orientation:{ direction: V3.normalize(V3.subtract(pos, dest, new V3()), new V3()) } });
+    }
   }
 
   // Camera iniziale
-  viewer.camera.setView({
-    destination: new V3(-0.6*U, 0.5*U, 0.9*U),
-    orientation: { heading: 0.0, pitch: -0.35, roll: 0.0 }
-  });
+  viewer.camera.setView({ destination: new V3(-0.6*U, 0.5*U, 0.9*U), orientation: { heading: 0.0, pitch: -0.35, roll: 0.0 } });
   setMode(0);
 
   // ===== Loop =====
@@ -220,27 +230,19 @@
     const heading=Math.atan2(dir.y, dir.x), pitch=Math.atan2(dir.z, Math.hypot(dir.x,dir.y));
     ship.orientation = Cesium.Transforms.headingPitchRollQuaternion(pos, new Cesium.HeadingPitchRoll(heading,pitch,0));
 
-    // rotta “glow” davanti alla nave
+    // rotta davanti alla nave
     const segs=140; pathPositions.length=0;
     for(let i=0;i<=segs;i++){ const s=clamp(t+i/segs*0.25,0,1); const P=sample(s); pathPositions.push(new V3(P.x*U,P.y*U,P.z*U)); }
 
     // HUD
-    const phases=[
-      {label:'Orbita Terrestre',t0:0.00,t1:0.20},
-      {label:'Luna — fly-by',   t0:0.20,t1:0.32},
-      {label:'Cruise→Giove',    t0:0.32,t1:0.58},
-      {label:'Giove — fly-by',  t0:0.58,t1:0.70},
-      {label:'Cruise→Nettuno',  t0:0.70,t1:0.88},
-      {label:'Nettuno & anelli',t0:0.88,t1:0.95},
-      {label:'Inserzione su Marte',t0:0.95,t1:1.00}
-    ];
+    const phases=[{label:'Orbita Terrestre',t0:0.00,t1:0.20},{label:'Luna — fly-by',t0:0.20,t1:0.32},{label:'Cruise→Giove',t0:0.32,t1:0.58},{label:'Giove — fly-by',t0:0.58,t1:0.70},{label:'Cruise→Nettuno',t0:0.70,t1:0.88},{label:'Nettuno & anelli',t0:0.88,t1:0.95},{label:'Inserzione su Marte',t0:0.95,t1:1.00}];
     let ph=phases[phases.length-1].label; for(const p of phases){ if(t>=p.t0&&t<p.t1){ ph=p.label; break; } }
     document.getElementById('phase').textContent=ph;
     document.getElementById('dist').textContent=(Math.round((1-t)*225e6)).toLocaleString('it-IT')+' km';
     document.getElementById('vel').textContent=(Math.round(Math.max(36, speed*12000))).toLocaleString('it-IT')+' km/s';
     document.getElementById('prog').style.width=Math.round(t*100)+'%';
 
-    // CAMERA MODES
+    // Modalità camera
     const cam=viewer.camera;
     if(CAM_MODES[camModeIdx]==='AUTO'){
       const cur=Cesium.Cartesian3.clone(cam.positionWC, new V3());
@@ -250,22 +252,26 @@
       const right=V3.normalize(V3.cross(camDir, Cesium.Cartesian3.UNIT_Z, new V3()), new V3());
       const up=V3.normalize(V3.cross(right, camDir, new V3()), new V3());
       cam.setView({ destination: blended, orientation:{ direction: camDir, up } });
+      focusName=null;
     }
     else if(CAM_MODES[camModeIdx]==='CHASE'){
       const chasePos=new V3(pos.x - dir.x*1.2*U, pos.y - dir.y*1.2*U + 0.25*U, pos.z - dir.z*1.2*U);
       cam.setView({ destination: chasePos, orientation:{ direction: V3.normalize(V3.subtract(pos,chasePos,new V3()), new V3()), up: Cesium.Cartesian3.UNIT_Z } });
+      focusName=null;
     }
     else if(CAM_MODES[camModeIdx]==='ORBIT'){
-      // trova il pianeta più vicino alla nave
-      let nearest=WP[0], best=1e9;
-      for(const w of WP){ const d=Math.hypot(w.p.x-here.x, w.p.y-here.y, w.p.z-here.z); if(d<best){best=d; nearest=w;} }
+      // se non abbiamo un focus esplicito, scegli il pianeta più vicino
+      let nearest=focusName? nameToWP[focusName] : WP.reduce((best,w)=> (Math.hypot(w.p.x-here.x,w.p.y-here.y,w.p.z-here.z) < Math.hypot(best.p.x-here.x,best.p.y-here.y,best.p.z-here.z) ? w : best), WP[0]);
+      focusName = nearest.name;
       const center=new V3(nearest.p.x*U, nearest.p.y*U, nearest.p.z*U);
-      const r = (nearest.r*1000)/U * 10; // raggio orbitale camera
-      orbitAngle += dt*0.3;
-      const orbitPos=new V3(center.x + Math.cos(orbitAngle)*r, center.y + r*0.3, center.z + Math.sin(orbitAngle)*r);
+      const dist=(nearest.r*1000)/U * focusZoom;
+      // orbita lenta attorno
+      const r = dist, h = dist*0.3;
+      const tA = (performance.now()*0.00025)% (Math.PI*2);
+      const orbitPos=new V3(center.x + Math.cos(tA)*r, center.y + h, center.z + Math.sin(tA)*r);
       cam.setView({ destination: orbitPos, orientation:{ direction: V3.normalize(V3.subtract(center, orbitPos, new V3()), new V3()), up: Cesium.Cartesian3.UNIT_Z } });
     }
-    // FREE = non tocco nulla (lasciamo i controlli utente di Cesium)
+    // FREE → lascia i controlli all'utente
   });
 })();
 </script>
