@@ -1,165 +1,407 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Viaggio su Marte - CesiumJS</title>
-    <script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
-    <link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-    <style>
-        html, body, #cesiumContainer {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-        }
-        #controls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 10;
-            background: rgba(0,0,0,0.6);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        button {
-            margin-top: 8px;
-            padding: 6px 12px;
-            cursor: pointer;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Viaggio su Marte — CesiumJS (Cinematic)</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#05070f; --panel:#0a0f20; --ink:#eaf1ff; --muted:#9fb0e6; --accent:#5ea2ff;
+    }
+    html,body,#cesiumContainer{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background:var(--bg);}
+    #hud{
+      position:fixed;inset:auto auto 16px 16px;z-index:20;
+      background:rgba(10,15,32,.72);backdrop-filter: blur(6px);
+      color:var(--ink);font:14px/1.25 ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
+      border:1px solid rgba(94,162,255,.25);border-radius:12px;padding:10px 12px;min-width:240px;
+      box-shadow:0 8px 24px rgba(0,0,0,.35);
+    }
+    #hud h3{margin:0 0 6px;font-size:15px;letter-spacing:.3px;color:#dfe9ff}
+    .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    button,select{
+      background:#0e1633;color:var(--ink);border:1px solid rgba(94,162,255,.35);
+      padding:8px 10px;border-radius:10px;cursor:pointer;font-weight:600;
+    }
+    button:hover{border-color:#7ab6ff;box-shadow:0 0 0 2px rgba(94,162,255,.15) inset}
+    .pill{font-size:12px;color:var(--muted);margin-top:6px}
+    .ok{color:#9cffd1}
+    .warn{color:#ffd47a}
+  </style>
 </head>
 <body>
-    <div id="cesiumContainer"></div>
-    <div id="controls">
-        <h3>Viaggio Terra → Marte</h3>
-        <button id="startJourney">Inizia il viaggio</button>
+  <div id="cesiumContainer" aria-label="Scena 3D Cesium"></div>
+
+  <div id="hud" role="group" aria-label="Controlli viaggio">
+    <h3>🚀 Viaggio Terra → Marte</h3>
+    <div class="row">
+      <button id="btnStart">Inizia viaggio</button>
+      <button id="btnClip">Clip cinematica</button>
+      <select id="quality">
+        <option value="low">Qualità: Bassa</option>
+        <option value="med" selected>Qualità: Media</option>
+        <option value="ultra">Qualità: Ultra</option>
+      </select>
+      <button id="btnRecord">Rec (WebM)</button>
+      <a id="dl" style="display:none"></a>
     </div>
+    <div class="pill" id="status">Pronto.</div>
+  </div>
 
-    <script>
-        // Disabilita il logo Cesium (opzionale)
-        Cesium.buildModuleUrl.setBaseUrl('https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/');
+  <script>
+  // === Setup Viewer ==========================================================
+  Cesium.buildModuleUrl.setBaseUrl('https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/');
 
-        // Inizializza il viewer
-        const viewer = new Cesium.Viewer('cesiumContainer', {
-            shouldAnimate: true,
-            timeline: false,
-            animation: false,
-            fullscreenButton: false,
-            vrButton: false,
-            geocoder: false,
-            homeButton: false,
-            sceneModePicker: false,
-            navigationHelpButton: false,
-            infoBox: false,
-            scene3DOnly: true
-        });
+  const viewer = new Cesium.Viewer('cesiumContainer', {
+    shouldAnimate: true,
+    timeline: false,
+    animation: false,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    navigationHelpButton: false,
+    infoBox: false,
+    selectionIndicator: false,
+    fullscreenButton: false,
+    skyAtmosphere: false,
+    scene3DOnly: true,
+    useDefaultRenderLoop: true
+  });
 
-        // Rimuovi la Terra (per mostrare solo lo spazio)
-        viewer.scene.globe.show = false;
-        viewer.scene.skyBox.show = true;
-        viewer.scene.backgroundColor = Cesium.Color.BLACK;
+  const scene = viewer.scene;
+  scene.globe.show = false;
+  scene.backgroundColor = Cesium.Color.fromBytes(3,6,16,255); // deep space
+  scene.highDynamicRange = true;
+  scene.fxaa = true;
+  if (Cesium.FeatureDetection.supportsWebGL2()) {
+    scene.msaaSamples = 4;
+  }
 
-        // Aggiungi il Sole al centro
-        const sun = viewer.entities.add({
-            position: Cesium.Cartesian3.fromDegrees(0, 0, 0),
-            billboard: {
-                image: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="14" fill="yellow"/></svg>',
-                scale: 2.0
-            }
-        });
+  // Post-processing: Bloom delicato
+  const bloom = scene.postProcessStages.bloom;
+  bloom.enabled = true;
+  bloom.uniforms.brightness = 0.4;
+  bloom.uniforms.glowOnly = false;
+  bloom.uniforms.contrast = 128.0;
+  bloom.uniforms.sigma = 2.5;
 
-        // Posizioni approssimate (semplificate)
-        const earthPosition = Cesium.Cartesian3.fromDegrees(0, 0, 150000000); // 150 milioni di km
-        const marsPosition = Cesium.Cartesian3.fromDegrees(0, 0, 228000000);  // 228 milioni di km
+  // === Unità e costanti (scala ridotta) =====================================
+  // Riduzione 1:1000 → 1 unità scena ≈ 1.000 km
+  const K = 1/1000; // fattore di scala su distanze espresse in km
+  const km = (v)=> v * K; // km → unità scena (metri “virtuali”)
+  // Raggi orbitali (km) approssimati
+  const R_EARTH_ORBIT = 149_600_000;
+  const R_MARS_ORBIT  = 227_900_000;
+  // Raggi corpi (km)
+  const R_SUN   = 696_340;
+  const R_EARTH = 6_371;
+  const R_MARS  = 3_389;
 
-        // Aggiungi la Terra
-        const earth = viewer.entities.add({
-            position: earthPosition,
-            ellipse: {
-                semiMinorAxis: 6371000,
-                semiMajorAxis: 6371000,
-                height: 0,
-                material: Cesium.Color.BLUE.withAlpha(0.8),
-                extrudedHeight: 0
-            },
-            billboard: {
-                image: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="blue"/></svg>',
-                scale: 0.5
-            }
-        });
+  // Pianeta come ellissoide brillante
+  function addSphere(name, radiusKm, position, color, emissive=false) {
+    return viewer.entities.add({
+      name,
+      position,
+      ellipsoid: {
+        radii: new Cesium.Cartesian3(km(radiusKm), km(radiusKm), km(radiusKm)),
+        material: color.withAlpha(emissive ? 1.0 : 0.95),
+        outline: false
+      },
+      label: {
+        text: name,
+        font: '600 14px Segoe UI',
+        fillColor: Cesium.Color.fromBytes(224,236,255,255),
+        outlineColor: Cesium.Color.fromBytes(10,16,32,255),
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -km(radiusKm) - 10),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0.0, km(3_000_000))
+      }
+    });
+  }
 
-        // Aggiungi Marte
-        const mars = viewer.entities.add({
-            position: marsPosition,
-            billboard: {
-                image: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="red"/></svg>',
-                scale: 0.5
-            }
-        });
+  // Sole (emissivo + alone tramite Billboard per il glow)
+  const sunPos = Cesium.Cartesian3.fromElements(0,0,0);
+  const sun = addSphere('Sole', R_SUN, sunPos, Cesium.Color.fromBytes(255,230,120), true);
 
-        // Nave spaziale (inizialmente sulla Terra)
-        const spacecraft = viewer.entities.add({
-            position: earthPosition,
-            billboard: {
-                image: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,10 40,40 60,40" fill="white"/></svg>',
-                scale: 0.3
-            }
-        });
+  const sunGlow = viewer.entities.add({
+    position: sunPos,
+    billboard: {
+      image: 'data:image/svg+xml;utf8,'+encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
+          <radialGradient id="g" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="rgba(255,240,180,1)"/>
+            <stop offset="60%" stop-color="rgba(255,200,80,0.35)"/>
+            <stop offset="100%" stop-color="rgba(255,180,60,0)"/>
+          </radialGradient>
+          <circle cx="128" cy="128" r="120" fill="url(#g)"/>
+        </svg>`),
+      scale: 2.5,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY
+    }
+  });
 
-        // Funzione per interpolare la traiettoria (orbita ellittica semplificata)
-        function createTrajectory(start, end, steps = 200) {
-            const positions = [];
-            for (let i = 0; i <= steps; i++) {
-                const t = i / steps;
-                // Interpolazione lineare (per semplicità; in realtà sarebbe ellittica)
-                const x = Cesium.Cartesian3.multiplyByScalar(start, 1 - t, new Cesium.Cartesian3());
-                const y = Cesium.Cartesian3.multiplyByScalar(end, t, new Cesium.Cartesian3());
-                const pos = Cesium.Cartesian3.add(x, y, new Cesium.Cartesian3());
-                positions.push(pos);
-            }
-            return positions;
-        }
+  // Orbite circolari di Terra/Marte (linee sottili)
+  function addOrbit(radiusKm, color) {
+    const pts = [];
+    const steps = 512;
+    for (let i=0;i<=steps;i++){
+      const t = i/steps * Math.PI*2;
+      const x = km(radiusKm)*Math.cos(t);
+      const z = km(radiusKm)*Math.sin(t);
+      pts.push(new Cesium.Cartesian3(x,0,z));
+    }
+    viewer.entities.add({
+      polyline: {
+        positions: pts,
+        width: 1.0,
+        material: color.withAlpha(0.35),
+        arcType: Cesium.ArcType.NONE
+      }
+    });
+  }
+  addOrbit(R_EARTH_ORBIT, Cesium.Color.fromBytes(120,170,255));
+  addOrbit(R_MARS_ORBIT,  Cesium.Color.fromBytes(255,120,120));
 
-        // Avvia il viaggio
-        document.getElementById('startJourney').addEventListener('click', () => {
-            const trajectory = createTrajectory(earthPosition, marsPosition);
-            let index = 0;
-            const durationPerStep = 50; // ms
+  // Terra e Marte posizionati a θ=0 (asse X)
+  const earthPos = Cesium.Cartesian3.fromElements(km(R_EARTH_ORBIT),0,0);
+  const marsPos  = Cesium.Cartesian3.fromElements(km(R_MARS_ORBIT),0,0);
 
-            function animate() {
-                if (index < trajectory.length) {
-                    spacecraft.position = trajectory[index];
-                    viewer.camera.lookAt(
-                        trajectory[index],
-                        new Cesium.Cartesian3(0, -50000000, 0) // posizione camera relativa
-                    );
-                    index++;
-                    setTimeout(animate, durationPerStep);
-                } else {
-                    // Arrivato su Marte
-                    viewer.camera.flyTo({
-                        destination: Cesium.Cartesian3.add(marsPosition, new Cesium.Cartesian3(0, -80000000, 0), new Cesium.Cartesian3()),
-                        duration: 2.0
-                    });
-                }
-            }
+  const earth = addSphere('Terra', R_EARTH, earthPos, Cesium.Color.fromBytes(120,170,255));
+  const mars  = addSphere('Marte', R_MARS,  marsPos,  Cesium.Color.fromBytes(255,120,120));
 
-            animate();
-        });
+  // === Traiettoria di trasferimento (tipo Hohmann) ===========================
+  // Ellisse nel piano XZ con Sole nel fuoco, pericentro R1, apocentro R2
+  function hohmannTransferPositions(R1km, R2km, samples=600){
+    const a = (R1km + R2km)/2;                    // semiasse maggiore (km)
+    const e = (R2km - R1km)/(R2km + R1km);        // eccentricità
+    const c = a*e;                                 // distanza centro-fuoco
+    const pts = [];
+    for (let i=0;i<=samples;i++){
+      const theta = i/samples * Math.PI;          // 0 → π
+      const r = (a*(1 - e*e)) / (1 + e*Math.cos(theta));
+      const x = km(r - c);                        // centro traslato così che il Sole stia nel fuoco
+      const z = km(r*Math.sin(theta));
+      pts.push(new Cesium.Cartesian3(x,0,z));
+    }
+    return pts;
+  }
 
-        // Imposta vista iniziale
-        viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(0, 0, 300000000),
-            orientation: {
-                heading: Cesium.Math.toRadians(0),
-                pitch: Cesium.Math.toRadians(-90),
-                roll: 0.0
-            },
-            duration: 0
-        });
-    </script>
+  const transferPositions = hohmannTransferPositions(R_EARTH_ORBIT, R_MARS_ORBIT, 900);
+
+  // Entity: traiettoria visibile
+  viewer.entities.add({
+    polyline: {
+      positions: transferPositions,
+      width: 2.0,
+      material: new Cesium.PolylineGlowMaterialProperty({
+        glowPower: 0.12,
+        color: Cesium.Color.fromBytes(120,220,255,255)
+      }),
+      arcType: Cesium.ArcType.NONE
+    }
+  });
+
+  // === Spacecraft dinamico ===================================================
+  const start = Cesium.JulianDate.now();
+  const travelSeconds = 40;  // durata “video” (secondi real time)
+  const clock = viewer.clock;
+  clock.startTime = start.clone();
+  clock.stopTime  = Cesium.JulianDate.addSeconds(start, travelSeconds, new Cesium.JulianDate());
+  clock.currentTime = start.clone();
+  clock.clockRange = Cesium.ClockRange.CLAMPED;
+  clock.multiplier = 1.0;
+  clock.shouldAnimate = true;
+
+  const sampledPos = new Cesium.SampledPositionProperty();
+  transferPositions.forEach((p, i) => {
+    const t = i / (transferPositions.length-1);
+    const tt = Cesium.JulianDate.addSeconds(start, t*travelSeconds, new Cesium.JulianDate());
+    sampledPos.addSample(tt, p);
+  });
+
+  const spacecraft = viewer.entities.add({
+    name: 'Nave',
+    position: sampledPos,
+    orientation: new Cesium.VelocityOrientationProperty(sampledPos),
+    model: {
+      // semplice “dart” procedurale in GLB minimal (sostituibile con un tuo modello)
+      uri: 'data:application/octet-stream;base64,', // placeholder: niente modello esterno → render fallback billboard
+      minimumPixelSize: 32,
+      scale: 1.0,
+      silhouetteColor: Cesium.Color.fromBytes(120,220,255),
+      silhouetteSize: 1.0,
+      show: false // useremo il billboard per compatibilità totale
+    },
+    billboard: {
+      image: 'data:image/svg+xml;utf8,'+encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+          <polygon points="40,6 30,34 50,34" fill="#eaf1ff"/>
+          <rect x="36.5" y="34" width="7" height="26" rx="2" fill="#bcd6ff"/>
+          <polygon points="40,60 28,72 52,72" fill="#88c9ff"/>
+        </svg>`),
+      scale: 0.9,
+      verticalOrigin: Cesium.VerticalOrigin.CENTER,
+      alignedAxis: new Cesium.Cartesian3(0,1,0),
+      disableDepthTestDistance: Number.POSITIVE_INFINITY
+    },
+    path: {
+      show: true,
+      resolution: 1,
+      leadTime: 0,
+      trailTime: travelSeconds,
+      material: new Cesium.PolylineGlowMaterialProperty({
+        color: Cesium.Color.fromBytes(120,220,255,200),
+        glowPower: 0.1
+      }),
+      width: 2
+    }
+  });
+
+  // Camera: tracking morbido sullo spacecraft
+  function trackShip(distance= km(600_000), height = km(200_000)){
+    const handler = viewer.scene.postRender.addEventListener(function(){
+      const t = clock.currentTime;
+      const pos = sampledPos.getValue(t, new Cesium.Cartesian3());
+      if (!pos) return;
+      const dir = Cesium.Cartesian3.normalize(pos, new Cesium.Cartesian3());
+      const camPos = Cesium.Cartesian3.add(
+        pos,
+        new Cesium.Cartesian3(-dir.x*distance, height, -dir.z*distance),
+        new Cesium.Cartesian3()
+      );
+      viewer.camera.lookAt(pos, new Cesium.Cartesian3(0,0,0));
+      // smooth flyTo manuale:
+      viewer.camera.flyTo({
+        destination: camPos,
+        orientation: { heading: viewer.camera.heading, pitch: Cesium.Math.toRadians(-10), roll: 0 },
+        duration: 0.5,
+        maximumHeight: km(5_000_000)
+      });
+      // stop follow alla fine
+      if (Cesium.JulianDate.greaterThanOrEquals(t, clock.stopTime)){
+        handler(); // remove
+      }
+    });
+    return handler;
+  }
+
+  // Vista iniziale
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromElements(km(R_MARS_ORBIT*1.15), km(3_000_000), km(R_MARS_ORBIT*0.1)),
+    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-10), roll: 0 },
+    duration: 0
+  });
+
+  // === Controlli UI ==========================================================
+  const $ = (id)=> document.getElementById(id);
+  const btnStart = $('btnStart');
+  const btnClip  = $('btnClip');
+  const btnRec   = $('btnRecord');
+  const quality  = $('quality');
+  const statusEl = $('status');
+  let stopTracker = null;
+
+  function setStatus(msg, cls=''){
+    statusEl.className = 'pill '+cls;
+    statusEl.textContent = msg;
+  }
+
+  function applyQuality(level){
+    switch(level){
+      case 'low':
+        scene.fxaa = true;
+        scene.msaaSamples = 1;
+        bloom.enabled = false;
+        viewer.targetFrameRate = 60;
+        setStatus('Qualità bassa • performance alta', 'ok');
+        break;
+      case 'med':
+        scene.fxaa = true;
+        scene.msaaSamples = 2;
+        bloom.enabled = true;
+        bloom.uniforms.sigma = 2.0;
+        viewer.targetFrameRate = 60;
+        setStatus('Qualità media attiva', 'ok');
+        break;
+      case 'ultra':
+        scene.fxaa = true;
+        scene.msaaSamples = 4;
+        bloom.enabled = true;
+        bloom.uniforms.sigma = 3.0;
+        viewer.targetFrameRate = 0; // illimitato
+        setStatus('Qualità ultra (potrebbe scaldare il device)', 'warn');
+        break;
+    }
+  }
+  quality.addEventListener('change', e=> applyQuality(e.target.value));
+  applyQuality(quality.value);
+
+  // Avvio viaggio (riavvia clock e tracking)
+  btnStart.addEventListener('click', ()=>{
+    clock.currentTime = start.clone();
+    clock.shouldAnimate = true;
+    if (typeof stopTracker === 'function') { try{ stopTracker(); }catch{} }
+    stopTracker = trackShip();
+
+    // fine: orbita attorno a Marte
+    setTimeout(()=>{
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromElements(km(R_MARS_ORBIT-400_000), km(300_000), km(0)),
+        orientation: { heading: Cesium.Math.toRadians(35), pitch: Cesium.Math.toRadians(-15), roll: 0 },
+        duration: 3.5
+      });
+      setStatus('Arrivo su Marte. Volo orbitale.', 'ok');
+    }, (travelSeconds+0.5)*1000);
+    setStatus('Traiettoria di trasferimento in corso…', 'ok');
+  });
+
+  // Clip cinematica pre-programmata
+  btnClip.addEventListener('click', ()=>{
+    setStatus('Clip cinematica…', 'ok');
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromElements(km(R_EARTH_ORBIT*1.15), km(2_200_000), km(R_EARTH_ORBIT*0.2)),
+      orientation: { heading: Cesium.Math.toRadians(-15), pitch: Cesium.Math.toRadians(-12), roll: 0 },
+      duration: 2.5
+    });
+    setTimeout(()=> btnStart.click(), 2600);
+  });
+
+  // === Registrazione WebM dal canvas (se supportata) =========================
+  let recorder=null, chunks=[];
+  btnRec.addEventListener('click', ()=>{
+    const canvas = viewer.canvas;
+    if (!canvas.captureStream) { setStatus('Registrazione non supportata su questo browser.', 'warn'); return; }
+    if (!recorder){
+      const stream = canvas.captureStream(60);
+      recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+      recorder.ondataavailable = e=> { if (e.data && e.data.size) chunks.push(e.data); };
+      recorder.onstop = ()=>{
+        const blob = new Blob(chunks, {type:'video/webm'});
+        chunks = [];
+        const url = URL.createObjectURL(blob);
+        const a = document.getElementById('dl');
+        a.href = url; a.download = 'viaggio-marte.webm';
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus('Clip salvata (WebM).', 'ok');
+        recorder = null;
+      };
+      recorder.start();
+      btnRec.textContent = 'Stop Rec';
+      setStatus('Registrazione in corso…', 'warn');
+    } else {
+      recorder.stop();
+      btnRec.textContent = 'Rec (WebM)';
+    }
+  });
+
+  // Accessibilità: riduci motion se preferito
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    viewer.targetFrameRate = 30;
+    bloom.enabled = false;
+  }
+  </script>
 </body>
 </html>
