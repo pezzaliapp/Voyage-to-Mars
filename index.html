@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Viaggio su Marte — CesiumJS (stable)</title>
+  <title>Viaggio su Marte — CesiumJS (safe-no-lighting)</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
   <style>
@@ -34,6 +34,8 @@
 
 <script>
 Cesium.buildModuleUrl.setBaseUrl('https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/');
+
+// Viewer minimale, NESSUNA atmosfera / globo / lighting
 const viewer = new Cesium.Viewer("cesium",{
   shouldAnimate:true,timeline:false,animation:false,geocoder:false,homeButton:false,
   sceneModePicker:false,navigationHelpButton:false,infoBox:false,selectionIndicator:false,
@@ -46,66 +48,95 @@ scene.backgroundColor = Cesium.Color.fromBytes(3,6,16,255);
 scene.fxaa = true;
 if (Cesium.FeatureDetection.supportsWebGL2()) scene.msaaSamples = 4;
 
-// Bloom protetto (alcuni device/plugin possono fallire)
-try{
-  const bloom = scene.postProcessStages.bloom;
-  bloom.enabled = true; bloom.uniforms.sigma = 2.2; bloom.uniforms.brightness = 0.45;
-}catch(e){ console.warn('Bloom disabilitato:', e); }
+// Disattivo ogni luce esplicita
+scene.sun = undefined;
+scene.moon = undefined;
+scene.light = undefined;
 
-// Lavoriamo in frame locale (IDENTITY)
+// Disattivo Bloom per massima compatibilità (si può riattivare)
+try{ scene.postProcessStages.bloom.enabled = false; }catch(e){}
+
+// Frame locale (niente ECEF/geodetico)
 viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
 
 // --------------------- SCALA COMPATTA (metri “di scena”) --------------------
 const R_E_ORBIT = 300000;  // 300 km
 const R_M_ORBIT = 500000;  // 500 km
-const R_SUN = 60000;       // 60 km
-const R_EARTH = 10000;     // 10 km
-const R_MARS = 7000;       // 7 km
+const S_SUN = 120000;      // “diametro” sprite sole
+const S_EARTH = 24000;     // sprite Terra
+const S_MARS = 18000;      // sprite Marte
 
-function addSphere(name, r, pos, color, emissive=false){
-  return viewer.entities.add({
-    name, position: pos,
-    ellipsoid:{radii:new Cesium.Cartesian3(r,r,r), material: emissive? color: color.withAlpha(0.95)},
-    label:{
-      text:name, font:"600 14px Segoe UI", fillColor: Cesium.Color.fromBytes(224,236,255),
-      outlineColor: Cesium.Color.fromBytes(10,16,32), outlineWidth:3,
-      verticalOrigin: Cesium.VerticalOrigin.BOTTOM, pixelOffset: new Cesium.Cartesian2(0,-8),
-      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0.0, R_M_ORBIT*4)
-    }
-  });
+// Sprites SVG con shading “finto” (NO lighting Cesium)
+function planetSVG(hex, specHex="#ffffff", vign="0.35"){
+  return 'data:image/svg+xml;utf8,'+encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+      <defs>
+        <radialGradient id="sh" cx="35%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="${specHex}" stop-opacity="0.55"/>
+          <stop offset="25%" stop-color="${hex}" stop-opacity="1"/>
+          <stop offset="100%" stop-color="${hex}" stop-opacity="1"/>
+        </radialGradient>
+        <radialGradient id="vig" cx="50%" cy="50%" r="50%">
+          <stop offset="70%" stop-color="rgba(0,0,0,0)"/>
+          <stop offset="100%" stop-color="rgba(0,0,0,${vign})"/>
+        </radialGradient>
+      </defs>
+      <circle cx="100" cy="100" r="90" fill="url(#sh)"/>
+      <circle cx="100" cy="100" r="90" fill="url(#vig)"/>
+    </svg>`);
 }
-function addOrbit(radius, color){
-  const pts=[], N=512;
-  for(let i=0;i<=N;i++){
-    const t=i/N*Cesium.Math.TWO_PI;
-    pts.push(new Cesium.Cartesian3(radius*Math.cos(t),0,radius*Math.sin(t)));
-  }
-  viewer.entities.add({polyline:{positions:pts,width:1.5,material:color.withAlpha(0.35),arcType:Cesium.ArcType.NONE}});
-}
-
-const ORIGIN = new Cesium.Cartesian3(0,0,0);
-addSphere("Sole", R_SUN, ORIGIN, Cesium.Color.fromBytes(255,230,120), true);
-// alone del Sole
-viewer.entities.add({position:ORIGIN, billboard:{
-  image:'data:image/svg+xml;utf8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
+const sunGlow = 'data:image/svg+xml;utf8,'+encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
     <radialGradient id="g" cx="50%" cy="50%" r="50%">
       <stop offset="0%" stop-color="rgba(255,240,180,1)"/>
       <stop offset="60%" stop-color="rgba(255,200,80,0.35)"/>
       <stop offset="100%" stop-color="rgba(255,180,60,0)"/>
-    </radialGradient><circle cx="128" cy="128" r="120" fill="url(#g)"/></svg>`),
-  scale:2.5, disableDepthTestDistance:Number.POSITIVE_INFINITY
-}});
+    </radialGradient>
+    <circle cx="128" cy="128" r="120" fill="url(#g)"/>
+  </svg>`);
 
+// Pianeti come billboard (NO ellissoidi → niente lighting pipeline)
+function addSprite(name, size, position, image, labelColor){
+  return viewer.entities.add({
+    position,
+    billboard:{
+      image, width:size, height:size,
+      verticalOrigin: Cesium.VerticalOrigin.CENTER,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY
+    },
+    label:{
+      text:name, font:"600 14px Segoe UI",
+      fillColor: labelColor || Cesium.Color.fromBytes(224,236,255),
+      outlineColor: Cesium.Color.fromBytes(10,16,32), outlineWidth:3,
+      verticalOrigin: Cesium.VerticalOrigin.TOP, pixelOffset:new Cesium.Cartesian2(0,10),
+      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0.0, R_M_ORBIT*4)
+    }
+  });
+}
+
+// Orbite (polilinee)
+function addOrbit(radius, color){
+  const pts=[], N=512;
+  for(let i=0;i<=N;i++){ const t=i/N*Cesium.Math.TWO_PI; pts.push(new Cesium.Cartesian3(radius*Math.cos(t),0,radius*Math.sin(t))); }
+  viewer.entities.add({ polyline:{ positions:pts, width:1.5, material:color.withAlpha(0.35), arcType:Cesium.ArcType.NONE }});
+}
+
+// Sole al centro
+const ORIGIN = new Cesium.Cartesian3(0,0,0);
+viewer.entities.add({ position: ORIGIN, billboard:{ image:sunGlow, scale:2.2, disableDepthTestDistance:Number.POSITIVE_INFINITY }});
+addSprite("Sole", S_SUN, ORIGIN, planetSVG("#ffd066","#fff5d0","0.15"));
+
+// Orbite e pianeti
 addOrbit(R_E_ORBIT, Cesium.Color.fromBytes(120,170,255));
 addOrbit(R_M_ORBIT, Cesium.Color.fromBytes(255,120,120));
 
 const earthPos = new Cesium.Cartesian3(R_E_ORBIT,0,0);
 const marsPos  = new Cesium.Cartesian3(R_M_ORBIT,0,0);
-addSphere("Terra", R_EARTH, earthPos, Cesium.Color.fromBytes(120,170,255));
-addSphere("Marte", R_MARS,  marsPos,  Cesium.Color.fromBytes(255,120,120));
+addSprite("Terra", S_EARTH, earthPos, planetSVG("#77a8ff","#eaf1ff"));
+addSprite("Marte", S_MARS,  marsPos,  planetSVG("#ff7a6a","#ffd0c7"));
 
-// --------- Ellisse di trasferimento (tipo Hohmann, proporzionale) -----------
-function hohmann(R1, R2, samples=700){
+// Traiettoria tipo Hohmann (polilinea)
+function hohmann(R1, R2, samples=900){
   const a=(R1+R2)/2, e=(R2-R1)/(R2+R1), c=a*e; const pts=[];
   for(let i=0;i<=samples;i++){
     const th=i/samples*Math.PI; const r=(a*(1-e*e))/(1+e*Math.cos(th));
@@ -120,7 +151,7 @@ viewer.entities.add({
   }), arcType:Cesium.ArcType.NONE}
 });
 
-// ------------------------- Nave + animazione clock --------------------------
+// Nave (billboard) + path
 const start = Cesium.JulianDate.now();
 const travelSeconds = 35;
 const clock = viewer.clock;
@@ -135,11 +166,10 @@ transfer.forEach((p,i)=>{
   const t=i/(transfer.length-1);
   sp.addSample(Cesium.JulianDate.addSeconds(start, t*travelSeconds, new Cesium.JulianDate()), p);
 });
-const craft = viewer.entities.add({
+viewer.entities.add({
   name:"Nave",
   position: sp,
   orientation: new Cesium.VelocityOrientationProperty(sp),
-  // *** NIENTE MODEL *** (evita crash)
   billboard:{
     image:'data:image/svg+xml;utf8,'+encodeURIComponent(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
@@ -152,7 +182,7 @@ const craft = viewer.entities.add({
     material:new Cesium.PolylineGlowMaterialProperty({color:Cesium.Color.fromBytes(120,220,255,200),glowPower:.1}), width:2}
 });
 
-// ------------------------------ Camera --------------------------------------
+// Camera
 function setInitialView(){
   viewer.camera.setView({
     destination: new Cesium.Cartesian3(R_M_ORBIT*1.2, R_M_ORBIT*0.6, R_M_ORBIT*0.8),
@@ -172,16 +202,16 @@ function trackShip(){
   return remove;
 }
 
-// ------------------------------ UI ------------------------------------------
+// UI
 const $ = id => document.getElementById(id);
 const status = $("status");
-function setStatus(msg){ status.textContent = msg; }
+const setStatus = (m)=> status.textContent = m;
 
 $("start").onclick = ()=>{
   clock.currentTime = start.clone();
   clock.shouldAnimate = true;
   trackShip();
-  setTimeout(()=>{ // volo finale attorno a Marte
+  setTimeout(()=>{
     viewer.camera.flyTo({
       destination:new Cesium.Cartesian3(R_M_ORBIT-180000, 120000, 80000),
       orientation:{heading:Cesium.Math.toRadians(25), pitch:Cesium.Math.toRadians(-15), roll:0},
@@ -202,13 +232,13 @@ $("clip").onclick = ()=>{
 };
 
 $("q").onchange = e=>{
-  const v=e.target.value, bloom = scene.postProcessStages?.bloom;
-  if(v==="low"){ scene.msaaSamples=1; scene.fxaa=true; if(bloom) bloom.enabled=false; setStatus("Qualità bassa"); }
-  if(v==="med"){ scene.msaaSamples=2; scene.fxaa=true; if(bloom){ bloom.enabled=true; bloom.uniforms.sigma=2.2; } setStatus("Qualità media"); }
-  if(v==="ultra"){ scene.msaaSamples=4; scene.fxaa=true; if(bloom){ bloom.enabled=true; bloom.uniforms.sigma=3.0; } setStatus("Qualità ultra"); }
+  const v=e.target.value;
+  if(v==="low"){ scene.msaaSamples=1; scene.fxaa=true; setStatus("Qualità bassa"); }
+  if(v==="med"){ scene.msaaSamples=2; scene.fxaa=true; setStatus("Qualità media"); }
+  if(v==="ultra"){ scene.msaaSamples=4; scene.fxaa=true; setStatus("Qualità ultra"); }
 };
 
-// Registrazione WebM dal canvas (se supportata)
+// Recording
 let rec=null, chunks=[];
 $("rec").onclick = ()=>{
   const canvas=viewer.canvas;
@@ -226,8 +256,8 @@ $("rec").onclick = ()=>{
   }else{ rec.stop(); $("rec").textContent="Rec (WebM)"; }
 };
 
-// accessibilità
-if (window.matchMedia('(prefers-reduced-motion: reduce)').matches){ scene.fxaa=true; scene.msaaSamples=1; const b=scene.postProcessStages?.bloom; if(b) b.enabled=false; }
+// Accessibilità
+if (window.matchMedia('(prefers-reduced-motion: reduce)').matches){ scene.msaaSamples=1; }
 </script>
 </body>
 </html>
