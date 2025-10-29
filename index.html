@@ -2,10 +2,12 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8"/>
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Viaggio su Marte — CesiumJS (safe-no-lighting)</title>
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
-  <link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <title>Viaggio su Marte — CesiumJS (failsafe 1.110)</title>
+  <!-- ############ CESIUM: VERSIONE STABILE 1.110 ############ -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js?v=110"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css?v=110" rel="stylesheet">
   <style>
     :root{--bg:#05070f;--panel:#0a0f20;--ink:#eaf1ff;--muted:#9fb0e6}
     html,body,#cesium{width:100%;height:100%;margin:0;background:var(--bg);overflow:hidden}
@@ -27,52 +29,41 @@
       <button id="start">Inizia viaggio</button>
       <button id="clip">Clip</button>
       <select id="q"><option value="med" selected>Qualità media</option><option value="ultra">Ultra</option><option value="low">Bassa</option></select>
-      <button id="rec">Rec (WebM)</button><a id="dl" style="display:none"></a>
     </div>
     <div class="pill" id="status">Pronto.</div>
   </div>
 
 <script>
-Cesium.buildModuleUrl.setBaseUrl('https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/');
+/* Cesium base url (coincide con 1.110) */
+Cesium.buildModuleUrl.setBaseUrl('https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/');
 
-// Viewer minimale, NESSUNA atmosfera / globo / lighting
 const viewer = new Cesium.Viewer("cesium",{
   shouldAnimate:true,timeline:false,animation:false,geocoder:false,homeButton:false,
   sceneModePicker:false,navigationHelpButton:false,infoBox:false,selectionIndicator:false,
   fullscreenButton:false,scene3DOnly:true
 });
 const scene = viewer.scene;
+/* Modalità “spazio” robusta: */
 scene.globe.show = false;
 scene.skyAtmosphere = false;
 scene.backgroundColor = Cesium.Color.fromBytes(3,6,16,255);
-scene.fxaa = true;
-if (Cesium.FeatureDetection.supportsWebGL2()) scene.msaaSamples = 4;
-
-// Disattivo ogni luce esplicita
-scene.sun = undefined;
-scene.moon = undefined;
-scene.light = undefined;
-
-// Disattivo Bloom per massima compatibilità (si può riattivare)
+/* Niente illuminazione dinamica / post-process: */
+scene.sun = undefined; scene.moon = undefined; scene.light = undefined;
 try{ scene.postProcessStages.bloom.enabled = false; }catch(e){}
-
-// Frame locale (niente ECEF/geodetico)
 viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
 
-// --------------------- SCALA COMPATTA (metri “di scena”) --------------------
+/* Scala compatta (metri “di scena”) */
 const R_E_ORBIT = 300000;  // 300 km
 const R_M_ORBIT = 500000;  // 500 km
-const S_SUN = 120000;      // “diametro” sprite sole
-const S_EARTH = 24000;     // sprite Terra
-const S_MARS = 18000;      // sprite Marte
+const S_SUN = 120000, S_EARTH = 24000, S_MARS = 18000;
 
-// Sprites SVG con shading “finto” (NO lighting Cesium)
-function planetSVG(hex, specHex="#ffffff", vign="0.35"){
+/* SVG helper (fake shading) */
+function planetSVG(hex, spec="#ffffff", vign="0.35"){
   return 'data:image/svg+xml;utf8,'+encodeURIComponent(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
       <defs>
         <radialGradient id="sh" cx="35%" cy="35%" r="65%">
-          <stop offset="0%" stop-color="${specHex}" stop-opacity="0.55"/>
+          <stop offset="0%" stop-color="${spec}" stop-opacity="0.55"/>
           <stop offset="25%" stop-color="${hex}" stop-opacity="1"/>
           <stop offset="100%" stop-color="${hex}" stop-opacity="1"/>
         </radialGradient>
@@ -91,51 +82,44 @@ const sunGlow = 'data:image/svg+xml;utf8,'+encodeURIComponent(`
       <stop offset="0%" stop-color="rgba(255,240,180,1)"/>
       <stop offset="60%" stop-color="rgba(255,200,80,0.35)"/>
       <stop offset="100%" stop-color="rgba(255,180,60,0)"/>
-    </radialGradient>
-    <circle cx="128" cy="128" r="120" fill="url(#g)"/>
-  </svg>`);
+    </radialGradient><circle cx="128" cy="128" r="120" fill="url(#g)"/></svg>`);
 
-// Pianeti come billboard (NO ellissoidi → niente lighting pipeline)
+/* Entities “sprite only” (nessuna geometria illuminata) */
 function addSprite(name, size, position, image, labelColor){
   return viewer.entities.add({
     position,
-    billboard:{
-      image, width:size, height:size,
-      verticalOrigin: Cesium.VerticalOrigin.CENTER,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY
-    },
-    label:{
-      text:name, font:"600 14px Segoe UI",
+    billboard:{ image, width:size, height:size, verticalOrigin: Cesium.VerticalOrigin.CENTER,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY },
+    label:{ text:name, font:"600 14px Segoe UI",
       fillColor: labelColor || Cesium.Color.fromBytes(224,236,255),
       outlineColor: Cesium.Color.fromBytes(10,16,32), outlineWidth:3,
       verticalOrigin: Cesium.VerticalOrigin.TOP, pixelOffset:new Cesium.Cartesian2(0,10),
-      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0.0, R_M_ORBIT*4)
-    }
+      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0.0, R_M_ORBIT*4) }
   });
 }
-
-// Orbite (polilinee)
 function addOrbit(radius, color){
   const pts=[], N=512;
-  for(let i=0;i<=N;i++){ const t=i/N*Cesium.Math.TWO_PI; pts.push(new Cesium.Cartesian3(radius*Math.cos(t),0,radius*Math.sin(t))); }
-  viewer.entities.add({ polyline:{ positions:pts, width:1.5, material:color.withAlpha(0.35), arcType:Cesium.ArcType.NONE }});
+  for(let i=0;i<=N;i++){ const t=i/N*Cesium.Math.TWO_PI;
+    pts.push(new Cesium.Cartesian3(radius*Math.cos(t),0,radius*Math.sin(t))); }
+  viewer.entities.add({ polyline:{ positions:pts, width:1.5,
+    material: color.withAlpha(0.6), arcType: Cesium.ArcType.NONE }});
 }
 
-// Sole al centro
+/* Sole + alone */
 const ORIGIN = new Cesium.Cartesian3(0,0,0);
-viewer.entities.add({ position: ORIGIN, billboard:{ image:sunGlow, scale:2.2, disableDepthTestDistance:Number.POSITIVE_INFINITY }});
+viewer.entities.add({ position: ORIGIN, billboard:{ image:sunGlow, scale:2.2,
+  disableDepthTestDistance:Number.POSITIVE_INFINITY }});
 addSprite("Sole", S_SUN, ORIGIN, planetSVG("#ffd066","#fff5d0","0.15"));
 
-// Orbite e pianeti
+/* Orbite e pianeti */
 addOrbit(R_E_ORBIT, Cesium.Color.fromBytes(120,170,255));
 addOrbit(R_M_ORBIT, Cesium.Color.fromBytes(255,120,120));
-
 const earthPos = new Cesium.Cartesian3(R_E_ORBIT,0,0);
 const marsPos  = new Cesium.Cartesian3(R_M_ORBIT,0,0);
 addSprite("Terra", S_EARTH, earthPos, planetSVG("#77a8ff","#eaf1ff"));
 addSprite("Marte", S_MARS,  marsPos,  planetSVG("#ff7a6a","#ffd0c7"));
 
-// Traiettoria tipo Hohmann (polilinea)
+/* Traiettoria tipo Hohmann (polilinea SOLIDA per massima compatibilità) */
 function hohmann(R1, R2, samples=900){
   const a=(R1+R2)/2, e=(R2-R1)/(R2+R1), c=a*e; const pts=[];
   for(let i=0;i<=samples;i++){
@@ -145,52 +129,38 @@ function hohmann(R1, R2, samples=900){
   return pts;
 }
 const transfer = hohmann(R_E_ORBIT, R_M_ORBIT, 900);
-viewer.entities.add({
-  polyline:{positions:transfer,width:2,material:new Cesium.PolylineGlowMaterialProperty({
-    color:Cesium.Color.fromBytes(120,220,255,220), glowPower:0.12
-  }), arcType:Cesium.ArcType.NONE}
-});
+viewer.entities.add({ polyline:{ positions:transfer, width:2,
+  material: Cesium.Color.fromBytes(120,220,255,220), arcType: Cesium.ArcType.NONE }});
 
-// Nave (billboard) + path
-const start = Cesium.JulianDate.now();
-const travelSeconds = 35;
-const clock = viewer.clock;
+/* Nave (billboard) + path semplice */
+const start = Cesium.JulianDate.now(), travelSeconds = 35, clock = viewer.clock;
 clock.startTime = start.clone();
 clock.stopTime  = Cesium.JulianDate.addSeconds(start, travelSeconds, new Cesium.JulianDate());
 clock.currentTime = start.clone();
 clock.clockRange = Cesium.ClockRange.CLAMPED;
 clock.shouldAnimate = false;
-
 const sp = new Cesium.SampledPositionProperty();
 transfer.forEach((p,i)=>{
   const t=i/(transfer.length-1);
   sp.addSample(Cesium.JulianDate.addSeconds(start, t*travelSeconds, new Cesium.JulianDate()), p);
 });
 viewer.entities.add({
-  name:"Nave",
-  position: sp,
-  orientation: new Cesium.VelocityOrientationProperty(sp),
-  billboard:{
-    image:'data:image/svg+xml;utf8,'+encodeURIComponent(`
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
-        <polygon points="40,6 30,34 50,34" fill="#eaf1ff"/>
-        <rect x="36.5" y="34" width="7" height="26" rx="2" fill="#bcd6ff"/>
-        <polygon points="40,60 28,72 52,72" fill="#88c9ff"/></svg>`),
-    scale:0.9, disableDepthTestDistance:Number.POSITIVE_INFINITY
-  },
-  path:{show:true, resolution:1, leadTime:0, trailTime:travelSeconds,
-    material:new Cesium.PolylineGlowMaterialProperty({color:Cesium.Color.fromBytes(120,220,255,200),glowPower:.1}), width:2}
+  name:"Nave", position: sp, orientation: new Cesium.VelocityOrientationProperty(sp),
+  billboard:{ image:'data:image/svg+xml;utf8,'+encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+      <polygon points="40,6 30,34 50,34" fill="#eaf1ff"/>
+      <rect x="36.5" y="34" width="7" height="26" rx="2" fill="#bcd6ff"/>
+      <polygon points="40,60 28,72 52,72" fill="#88c9ff"/></svg>`),
+    scale:0.9, disableDepthTestDistance:Number.POSITIVE_INFINITY },
+  path:{ show:true, resolution:1, leadTime:0, trailTime:travelSeconds,
+    material: Cesium.Color.fromBytes(120,220,255,160), width:2 }
 });
 
-// Camera
-function setInitialView(){
-  viewer.camera.setView({
-    destination: new Cesium.Cartesian3(R_M_ORBIT*1.2, R_M_ORBIT*0.6, R_M_ORBIT*0.8),
-    orientation: {heading:0, pitch:Cesium.Math.toRadians(-20), roll:0}
-  });
-}
-setInitialView();
-
+/* Camera */
+viewer.camera.setView({
+  destination: new Cesium.Cartesian3(R_M_ORBIT*1.2, R_M_ORBIT*0.6, R_M_ORBIT*0.8),
+  orientation: {heading:0, pitch:Cesium.Math.toRadians(-20), roll:0}
+});
 function trackShip(){
   const remove = scene.postRender.addEventListener(()=>{
     const t=clock.currentTime, pos=sp.getValue(t,new Cesium.Cartesian3()); if(!pos) return;
@@ -202,11 +172,9 @@ function trackShip(){
   return remove;
 }
 
-// UI
-const $ = id => document.getElementById(id);
-const status = $("status");
+/* UI */
+const $ = id => document.getElementById(id), status = $("status");
 const setStatus = (m)=> status.textContent = m;
-
 $("start").onclick = ()=>{
   clock.currentTime = start.clone();
   clock.shouldAnimate = true;
@@ -221,7 +189,6 @@ $("start").onclick = ()=>{
   }, (travelSeconds+0.5)*1000);
   setStatus("Traiettoria in esecuzione…");
 };
-
 $("clip").onclick = ()=>{
   setStatus("Clip…");
   viewer.camera.flyTo({
@@ -230,34 +197,12 @@ $("clip").onclick = ()=>{
   });
   setTimeout(()=>$("start").click(),2300);
 };
-
 $("q").onchange = e=>{
   const v=e.target.value;
   if(v==="low"){ scene.msaaSamples=1; scene.fxaa=true; setStatus("Qualità bassa"); }
   if(v==="med"){ scene.msaaSamples=2; scene.fxaa=true; setStatus("Qualità media"); }
   if(v==="ultra"){ scene.msaaSamples=4; scene.fxaa=true; setStatus("Qualità ultra"); }
 };
-
-// Recording
-let rec=null, chunks=[];
-$("rec").onclick = ()=>{
-  const canvas=viewer.canvas;
-  if(!canvas.captureStream){ setStatus("Rec non supportata su questo browser"); return; }
-  if(!rec){
-    const stream = canvas.captureStream(60);
-    rec = new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'});
-    rec.ondataavailable = e=>{ if(e.data?.size) chunks.push(e.data); };
-    rec.onstop = ()=>{
-      const blob=new Blob(chunks,{type:'video/webm'}); chunks=[];
-      const url=URL.createObjectURL(blob); const a=document.getElementById('dl'); a.href=url; a.download='viaggio-marte.webm'; a.click();
-      URL.revokeObjectURL(url); rec=null; setStatus("Clip salvata.");
-    };
-    rec.start(); setStatus("Registrazione in corso…"); $("rec").textContent="Stop Rec";
-  }else{ rec.stop(); $("rec").textContent="Rec (WebM)"; }
-};
-
-// Accessibilità
-if (window.matchMedia('(prefers-reduced-motion: reduce)').matches){ scene.msaaSamples=1; }
 </script>
 </body>
 </html>
