@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Viaggio su Marte — CesiumJS (fix)</title>
+  <title>Viaggio su Marte — CesiumJS (stable)</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
   <style>
@@ -45,17 +45,20 @@ scene.skyAtmosphere = false;
 scene.backgroundColor = Cesium.Color.fromBytes(3,6,16,255);
 scene.fxaa = true;
 if (Cesium.FeatureDetection.supportsWebGL2()) scene.msaaSamples = 4;
-// Bloom dolce
-const bloom = scene.postProcessStages.bloom;
-bloom.enabled = true; bloom.uniforms.sigma = 2.2; bloom.uniforms.brightness = 0.45;
 
-// *** IMPORTANTISSIMO *** lavoriamo in un frame locale, non geocentrico
+// Bloom protetto (alcuni device/plugin possono fallire)
+try{
+  const bloom = scene.postProcessStages.bloom;
+  bloom.enabled = true; bloom.uniforms.sigma = 2.2; bloom.uniforms.brightness = 0.45;
+}catch(e){ console.warn('Bloom disabilitato:', e); }
+
+// Lavoriamo in frame locale (IDENTITY)
 viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
 
 // --------------------- SCALA COMPATTA (metri “di scena”) --------------------
 const R_E_ORBIT = 300000;  // 300 km
 const R_M_ORBIT = 500000;  // 500 km
-const R_SUN = 60000;       // 60 km (sfera “emissiva”)
+const R_SUN = 60000;       // 60 km
 const R_EARTH = 10000;     // 10 km
 const R_MARS = 7000;       // 7 km
 
@@ -81,7 +84,7 @@ function addOrbit(radius, color){
 }
 
 const ORIGIN = new Cesium.Cartesian3(0,0,0);
-const sun = addSphere("Sole", R_SUN, ORIGIN, Cesium.Color.fromBytes(255,230,120), true);
+addSphere("Sole", R_SUN, ORIGIN, Cesium.Color.fromBytes(255,230,120), true);
 // alone del Sole
 viewer.entities.add({position:ORIGIN, billboard:{
   image:'data:image/svg+xml;utf8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
@@ -133,12 +136,16 @@ transfer.forEach((p,i)=>{
   sp.addSample(Cesium.JulianDate.addSeconds(start, t*travelSeconds, new Cesium.JulianDate()), p);
 });
 const craft = viewer.entities.add({
-  name:"Nave", position: sp, orientation: new Cesium.VelocityOrientationProperty(sp),
-  billboard:{ image:'data:image/svg+xml;utf8,'+encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
-      <polygon points="40,6 30,34 50,34" fill="#eaf1ff"/>
-      <rect x="36.5" y="34" width="7" height="26" rx="2" fill="#bcd6ff"/>
-      <polygon points="40,60 28,72 52,72" fill="#88c9ff"/></svg>`),
+  name:"Nave",
+  position: sp,
+  orientation: new Cesium.VelocityOrientationProperty(sp),
+  // *** NIENTE MODEL *** (evita crash)
+  billboard:{
+    image:'data:image/svg+xml;utf8,'+encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+        <polygon points="40,6 30,34 50,34" fill="#eaf1ff"/>
+        <rect x="36.5" y="34" width="7" height="26" rx="2" fill="#bcd6ff"/>
+        <polygon points="40,60 28,72 52,72" fill="#88c9ff"/></svg>`),
     scale:0.9, disableDepthTestDistance:Number.POSITIVE_INFINITY
   },
   path:{show:true, resolution:1, leadTime:0, trailTime:travelSeconds,
@@ -195,10 +202,10 @@ $("clip").onclick = ()=>{
 };
 
 $("q").onchange = e=>{
-  const v=e.target.value;
-  if(v==="low"){ scene.msaaSamples=1; scene.fxaa=true; bloom.enabled=false; setStatus("Qualità bassa"); }
-  if(v==="med"){ scene.msaaSamples=2; scene.fxaa=true; bloom.enabled=true; bloom.uniforms.sigma=2.2; setStatus("Qualità media"); }
-  if(v==="ultra"){ scene.msaaSamples=4; scene.fxaa=true; bloom.enabled=true; bloom.uniforms.sigma=3.0; setStatus("Qualità ultra"); }
+  const v=e.target.value, bloom = scene.postProcessStages?.bloom;
+  if(v==="low"){ scene.msaaSamples=1; scene.fxaa=true; if(bloom) bloom.enabled=false; setStatus("Qualità bassa"); }
+  if(v==="med"){ scene.msaaSamples=2; scene.fxaa=true; if(bloom){ bloom.enabled=true; bloom.uniforms.sigma=2.2; } setStatus("Qualità media"); }
+  if(v==="ultra"){ scene.msaaSamples=4; scene.fxaa=true; if(bloom){ bloom.enabled=true; bloom.uniforms.sigma=3.0; } setStatus("Qualità ultra"); }
 };
 
 // Registrazione WebM dal canvas (se supportata)
@@ -220,7 +227,7 @@ $("rec").onclick = ()=>{
 };
 
 // accessibilità
-if (window.matchMedia('(prefers-reduced-motion: reduce)').matches){ scene.fxaa=true; scene.msaaSamples=1; bloom.enabled=false; }
+if (window.matchMedia('(prefers-reduced-motion: reduce)').matches){ scene.fxaa=true; scene.msaaSamples=1; const b=scene.postProcessStages?.bloom; if(b) b.enabled=false; }
 </script>
 </body>
 </html>
